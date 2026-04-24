@@ -1,0 +1,53 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# SQLite database
+*.sqlite3
+*.sqlite3-journal
+db.sqlite3
+
+# Django media uploads
+media/
+media_root/
+uploads/
+uploads_root/
+
+# Static files
+static/
+static_root/
+staticfiles/
+
+# Environment variable files
+.env
+.env.*
+
+# Node.js dependencies
+node_modules/
+
+# Logs and runtime files
+*.log
+*.pot
+*.pyc
+*.pyo
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.iml
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini

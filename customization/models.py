@@ -27,9 +27,12 @@ class ProductImage(models.Model):
     def save(self, *args, **kwargs):
         # Delete old image file when updating
         if self.pk:
-            old_instance = ProductImage.objects.get(pk=self.pk)
-            if old_instance.image_file and old_instance.image_file != self.image_file:
-                old_instance.image_file.delete(save=False)
+            try:
+                old_instance = ProductImage.objects.get(pk=self.pk)
+                if old_instance.image_file and old_instance.image_file != self.image_file:
+                    old_instance.image_file.delete(save=False)
+            except ProductImage.DoesNotExist:
+                pass
         super().save(*args, **kwargs)
 
     def __str__(self):

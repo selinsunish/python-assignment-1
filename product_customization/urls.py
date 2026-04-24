@@ -3,9 +3,10 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import redirect
+from customization import views
 
 urlpatterns = [
-    path('', lambda request: redirect('admin/')),
+    path('', views.frontend_view, name='frontend_view'),
     path('admin/', admin.site.urls),
     path('api/', include('customization.urls')),
 ]

@@ -1,10 +1,11 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.core.files.storage import default_storage
-from .models import Product, ProductImage, UserDesign, RenderedImage
+from .models import UserDesign, RenderedImage
 from .tasks import render_design_on_products
-import json
+
+def frontend_view(request):
+    return render(request, 'index.html')
 
 
 @csrf_exempt

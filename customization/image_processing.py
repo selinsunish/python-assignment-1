@@ -5,7 +5,6 @@ import os
 
 def process_design_on_product(design_path, product_image_obj, output_path):
     try:
-        print("🔥 MAXIMUM REALISM IMAGE PROCESSING RUNNING")
 
         # ================================
         # 1️⃣ RESOLVE PATHS SAFELY
@@ -14,9 +13,6 @@ def process_design_on_product(design_path, product_image_obj, output_path):
 
         # CHANGE THIS IF YOUR FIELD NAME IS DIFFERENT
         product_path = product_image_obj.image_file.path
-
-        print("Design path:", design_path)
-        print("Product path:", product_path)
 
         # ================================
         # 2️⃣ VALIDATE FILES EXIST
@@ -39,9 +35,6 @@ def process_design_on_product(design_path, product_image_obj, output_path):
         if product_img is None or product_img.size == 0:
             raise ValueError(f"OpenCV failed to load PRODUCT image: {product_path}")
 
-        print(f"Design image shape: {design.shape}, size: {design.size}")
-        print(f"Product image shape: {product_img.shape}, size: {product_img.size}")
-
         # ================================
         # 4️⃣ FORCE FRESH DJANGO OBJECT (IMPORTANT)
         # ================================
@@ -57,9 +50,6 @@ def process_design_on_product(design_path, product_image_obj, output_path):
         w = product_image_obj.print_area_width
         h = product_image_obj.print_area_height
 
-        print(f"Print area: x={x}, y={y}, w={w}, h={h}")
-        print(f"Product image dimensions: height={product_img.shape[0]}, width={product_img.shape[1]}")
-
         if x < 0 or y < 0 or w <= 0 or h <= 0:
             raise ValueError("Invalid print area: negative or zero dimensions")
 
@@ -67,63 +57,60 @@ def process_design_on_product(design_path, product_image_obj, output_path):
             raise ValueError("Print area exceeds product image bounds")
 
         # ================================
-        # 6️⃣ RESIZE DESIGN
+        # 6️⃣ RESIZE DESIGN (PRESERVING ASPECT RATIO)
         # ================================
-        design_resized = cv2.resize(design, (w, h), interpolation=cv2.INTER_LINEAR)
-
+        orig_h, orig_w = design.shape[:2]
+        scale = min(w / orig_w, h / orig_h)
+        new_w, new_h = int(orig_w * scale), int(orig_h * scale)
+        
+        design_scaled = cv2.resize(design, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+        
         # ================================
-        # 6️⃣ RESIZE DESIGN
+        # 7️⃣ HANDLE ALPHA / BACKGROUND REMOVAL (ON SCALED DESIGN)
         # ================================
-        design_resized = cv2.resize(design, (w, h), interpolation=cv2.INTER_LINEAR)
-
-        # ================================
-        # 7️⃣ HANDLE ALPHA / BACKGROUND REMOVAL
-        # ================================
-        if design_resized.shape[2] == 4:  # RGBA
-            design_rgb = design_resized[:, :, :3].astype(np.float32)
-            alpha = design_resized[:, :, 3].astype(np.float32) / 255.0
-
+        if len(design_scaled.shape) == 3 and design_scaled.shape[2] == 4:  # RGBA
+            scaled_rgb = design_scaled[:, :, :3].astype(np.float32)
+            scaled_alpha = design_scaled[:, :, 3].astype(np.float32) / 255.0
         else:
-            design_rgb = design_resized.astype(np.float32)
-            alpha = None
-
-        if alpha is None:
-            # Try to remove a uniform background from RGB-only designs.
-            gray_design = cv2.cvtColor(design_resized, cv2.COLOR_BGR2GRAY)
+            if len(design_scaled.shape) == 2:
+                scaled_rgb = cv2.cvtColor(design_scaled, cv2.COLOR_GRAY2BGR).astype(np.float32)
+                gray_design = design_scaled
+            else:
+                scaled_rgb = design_scaled.astype(np.float32)
+                gray_design = cv2.cvtColor(design_scaled, cv2.COLOR_BGR2GRAY)
+            
             # Threshold to find near-white / light background.
             _, mask = cv2.threshold(gray_design, 240, 255, cv2.THRESH_BINARY_INV)
             mask = cv2.GaussianBlur(mask, (7, 7), 0)
-            alpha = mask.astype(np.float32) / 255.0
+            scaled_alpha = mask.astype(np.float32) / 255.0
+            scaled_alpha = np.clip(scaled_alpha, 0.0, 1.0)
 
-            # Make sure fully transparent areas are hidden.
-            alpha = np.clip(alpha, 0.0, 1.0)
+        # ================================
+        # 7.5️⃣ PAD INTO TARGET (W, H)
+        # ================================
+        # Create empty transparent canvas (h, w)
+        design_rgb = np.zeros((h, w, 3), dtype=np.float32)
+        alpha = np.zeros((h, w), dtype=np.float32)
 
         # Ensure alpha is float32 and same size as design
         alpha = alpha.astype(np.float32)
-        if alpha.ndim == 2:
-            alpha = alpha
 
-        # Optional: Fill transparent parts with white behind the logo for better blending.
-        white_bg = np.full_like(design_rgb, 255.0, dtype=np.float32)
-        design_rgb = design_rgb * alpha[:, :, np.newaxis] + white_bg * (1 - alpha[:, :, np.newaxis])
+        # Center coordinates
+        y_offset = (h - new_h) // 2
+        x_offset = (w - new_w) // 2
+
+        # Paste the scaled design and alpha into the center
+        design_rgb[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = scaled_rgb
+        alpha[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = scaled_alpha
 
         # ================================
-        # 8️⃣ PERSPECTIVE WARP
+        # 8️⃣ NO PERSPECTIVE WARP (FLAT OVERLAY)
         # ================================
-        src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
-        dst = np.float32([
-            [0, 0],
-            [w * 0.9, 10],
-            [w, h],
-            [w * 0.1, h - 10]
-        ])
-
-        M = cv2.getPerspectiveTransform(src, dst)
-
-        warped_rgb = cv2.warpPerspective(design_rgb, M, (w, h), borderMode=cv2.BORDER_REFLECT)
-        warped_alpha = cv2.warpPerspective(alpha, M, (w, h), borderMode=cv2.BORDER_REFLECT)
-
-        warped_alpha = cv2.GaussianBlur(warped_alpha, (7, 7), 0) * 0.95
+        warped_rgb = design_rgb
+        warped_alpha = alpha
+        
+        # Soften edges slightly
+        warped_alpha = cv2.GaussianBlur(warped_alpha, (3, 3), 0) * 0.95
 
         # ================================
         # 9️⃣ SATURATION BOOST
@@ -139,8 +126,6 @@ def process_design_on_product(design_path, product_image_obj, output_path):
 
         if roi.size == 0:
             raise ValueError("ROI is empty - print area out of bounds")
-
-        print(f"ROI shape: {roi.shape}, size: {roi.size}")
 
         try:
             gray = cv2.cvtColor(roi.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
@@ -193,8 +178,6 @@ def process_design_on_product(design_path, product_image_obj, output_path):
 
         if not success:
             raise IOError("Failed to save output image")
-
-        print("✅ Saved (NO TRANSPARENCY):", output_path)
 
         return output_path
 

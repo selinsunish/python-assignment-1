@@ -10,24 +10,28 @@ def frontend_view(request):
 
 @csrf_exempt
 def upload_design(request):
-    if request.method == 'POST':
-        design_image = request.FILES.get('design_image')
-        if not design_image:
-            return JsonResponse({'error': 'No design image provided'}, status=400)
+    import traceback
+    try:
+        if request.method == 'POST':
+            design_image = request.FILES.get('design_image')
+            if not design_image:
+                return JsonResponse({'error': 'No design image provided'}, status=400)
+            
+            # Assume user is authenticated, or handle accordingly
+            user = request.user if request.user.is_authenticated else None
+            if not user:
+                return JsonResponse({'error': 'User not authenticated'}, status=401)
+            
+            user_design = UserDesign.objects.create(user=user, design_image=design_image)
+            
+            # Trigger Celery task
+            render_design_on_products.delay(user_design.id)
+            
+            return JsonResponse({'design_id': user_design.id, 'message': 'Design uploaded and processing started'})
         
-        # Assume user is authenticated, or handle accordingly
-        user = request.user if request.user.is_authenticated else None
-        if not user:
-            return JsonResponse({'error': 'User not authenticated'}, status=401)
-        
-        user_design = UserDesign.objects.create(user=user, design_image=design_image)
-        
-        # Trigger Celery task
-        render_design_on_products.delay(user_design.id)
-        
-        return JsonResponse({'design_id': user_design.id, 'message': 'Design uploaded and processing started'})
-    
-    return JsonResponse({'error': 'Method not allowed'}, status=405)
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    except Exception as e:
+        return JsonResponse({'error': str(e), 'traceback': traceback.format_exc()}, status=500)
 
 
 def get_rendered_images(request, design_id):

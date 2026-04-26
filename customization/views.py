@@ -17,10 +17,11 @@ def upload_design(request):
             if not design_image:
                 return JsonResponse({'error': 'No design image provided'}, status=400)
             
-            # Assume user is authenticated, or handle accordingly
+            # If user is not authenticated, use a default demo user for the public Render deployment
             user = request.user if request.user.is_authenticated else None
             if not user:
-                return JsonResponse({'error': 'User not authenticated'}, status=401)
+                from django.contrib.auth.models import User
+                user, created = User.objects.get_or_create(username='demo_user')
             
             user_design = UserDesign.objects.create(user=user, design_image=design_image)
             
